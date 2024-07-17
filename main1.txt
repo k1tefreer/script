@@ -1,0 +1,81 @@
+import multiprocessing as mp
+import threading
+import time
+import random
+import cv2
+import os
+
+def receive_image():
+    while True:
+        # 模拟图像接收
+        img = cv2.imread(f"img1/img_{random.randint(1, 10)}.jpg")
+        if img is not None:
+            print("Image received")
+        else:
+            print("Failed to load image")
+        time.sleep(1)
+        yield img
+
+def distribute_images(image_queue):
+    for img in receive_image():
+        image_queue.put(img)
+        print("Image put in queue")
+
+def start_processes(image_queue):
+    # 创建三个进程，分别运行三个不同的进程脚本
+    scripts = ['pro_xielou.py', 'pro_helmet.py', 'pro_cigarette.py']
+    processes = []
+    for script in scripts:
+        p = mp.Process(target=exec_script, args=(script, image_queue))
+        processes.append(p)
+        p.start()
+        print(f"Started process for {script}")
+
+    return processes
+
+def exec_script(script, image_queue):
+    try:
+        global image_queue_global
+        image_queue_global = image_queue
+        with open(script, 'r', encoding='utf-8') as file:
+            exec(file.read())
+        print(f"Executed script {script}")
+    except Exception as e:
+        print(f"Error executing script {script}: {e}")
+
+def display_images(image_queue):
+    while True:
+        if not image_queue.empty():
+            image = image_queue.get()
+            cv2.imshow("Main Display", image)
+            cv2.waitKey(1)  # 这里设置合适的等待时间，或者使用 0 表示持续等待
+
+if __name__ == "__main__":
+    try:
+        # 创建一个队列来存储接收的图像
+        image_queue = mp.Queue()
+
+        # 启动图像接收和分发线程
+        distributor_thread = threading.Thread(target=distribute_images, args=(image_queue,))
+        distributor_thread.start()
+        print("Distributor thread started")
+
+        # 启动目标检测进程
+        processes = start_processes(image_queue)
+
+        # 启动图像显示线程
+        display_thread = threading.Thread(target=display_images, args=(image_queue,))
+        display_thread.start()
+
+        # 等待所有进程结束
+        for p in processes:
+            p.join()
+
+        # 等待分发线程结束
+        distributor_thread.join()
+
+        # 等待图像显示线程结束
+        display_thread.join()
+
+    except Exception as e:
+        print(f"Error in main process: {e}")
